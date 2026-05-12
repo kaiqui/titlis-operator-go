@@ -1,0 +1,56 @@
+# Configuração declarativa de checks sintéticos do titlis-operator
+#
+# Ative via: SYNTHETIC_CHECKS_CONFIG_PATH=/etc/titlis/synthetic-checks.yaml
+# Se não definida, o operator usa as variáveis SYNTHETIC_MONITOR_* (modo legado).
+#
+# Tipos disponíveis:
+#   site_health  — GET no endpoint; reporta synthetic.site.health (0/1) e
+#                  synthetic.site.response_time_ms ao Datadog
+#   json_value   — GET no endpoint; extrai um valor numérico do JSON via
+#                  dot-notation (ex: "data.account.balance") e envia como
+#                  gauge com o metric_name especificado
+#
+# Segurança:
+#   - Nunca coloque tokens diretamente em headers aqui; use Secrets K8s e
+#     Monte-os como variáveis de ambiente referenciadas pelo manifesto do operator
+#   - Em clusters com service mesh (Istio/Linkerd), prefira mTLS em vez de tokens
+
+checks:
+
+  # --- site_health: verifica disponibilidade e latência de um endpoint público ---
+  - name: jeitto-homepage
+    type: site_health
+    url: https://jeitto.com.br
+    interval_seconds: 60
+    timeout_seconds: 10
+    tags:
+      env: prod
+      service: jeitto-homepage
+      region: us-east-1
+
+  # --- json_value: extrai saldo de uma API interna e envia como gauge ---
+  - name: wallet-balance
+    type: json_value
+    url: https://api.wallet.internal/v1/balance
+    json_path: balance          # {"balance": 1200.00}  →  1200.0
+    metric_name: wallet.balance
+    interval_seconds: 120
+    timeout_seconds: 10
+    tags:
+      env: prod
+      service: wallet
+      region: us-east-1
+    # headers:                  # descomente se o endpoint exigir autenticação
+    #   Authorization: Bearer COLOQUE_AQUI_VIA_SECRET
+
+  # --- json_value: caminho aninhado (dot-notation) ---
+  # - name: payment-queue-depth
+  #   type: json_value
+  #   url: https://api.payments.internal/v1/status
+  #   json_path: queues.pending.count   # {"queues": {"pending": {"count": 42}}}
+  #   metric_name: payments.queue.pending_count
+  #   interval_seconds: 30
+  #   timeout_seconds: 5
+  #   tags:
+  #     env: prod
+  #     service: payments

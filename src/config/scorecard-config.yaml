@@ -1,0 +1,262 @@
+# =============================================================================
+# Titlis Operator Go — Scorecard Configuration
+# =============================================================================
+# Este arquivo configura o ScorecardService do titlis-operator-go.
+#
+# Como funciona:
+#   - Regras listadas aqui com um ID existente sobrescrevem apenas os campos
+#     weight, enabled e severity do padrão hardcoded em rules.go.
+#   - Regras com ID novo (não existente em rules.go) são adicionadas ao engine.
+#   - excluded_namespaces SUBSTITUI completamente a lista padrão.
+#   - Se a seção rules estiver vazia, todos os 26 defaults são usados.
+#
+# Para desabilitar uma regra: enabled: false
+# Para ajustar o peso:        weight: <valor>
+# Para alterar severidade:    severity: critical | error | warning | info
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Namespaces excluídos da análise
+# Ao definir esta lista ela substitui os defaults (kube-system, datadog, etc.)
+# Inclua TODOS os namespaces que não são workloads de aplicação.
+# -----------------------------------------------------------------------------
+excluded_namespaces:
+  # Kubernetes system
+  - "kube-system"
+  - "kube-public"
+  - "kube-node-lease"
+  # Observabilidade
+  - "datadog"
+  - "monitoring"
+  - "prometheus"
+  - "grafana"
+  - "loki"
+  # CAST AI — não é namespace de aplicação, não precisa de monitoração de compliance
+  - "castai-agent"
+  # Titlis próprio
+  - "titlis-system"
+  - "titlis-operator"
+
+# -----------------------------------------------------------------------------
+# Thresholds de notificação (score geral do workload)
+# Abaixo do threshold correspondente, o buffer de notificação é acionado.
+# -----------------------------------------------------------------------------
+notification_thresholds:
+  critical: 65.0   # score < 65 → severidade crítica
+  error:    75.0   # score < 75 → severidade error
+  warning:  85.0   # score < 85 → severidade warning
+
+# -----------------------------------------------------------------------------
+# Configurações do sistema de notificação por namespace
+# -----------------------------------------------------------------------------
+notification_settings:
+  cooldown_minutes: 60    # intervalo mínimo entre notificações do mesmo workload
+  batch: true             # agrupa notificações por namespace (digest)
+  batch_interval: 15      # flush do digest a cada N minutos (ou batch_size atingido)
+
+# -----------------------------------------------------------------------------
+# Regras — overrides e personalizações
+#
+# Abaixo estão TODAS as 26 regras implementadas com seus valores padrão.
+# Descomente e ajuste apenas o que precisar alterar.
+#
+# Pilar RESILIENCE (RES-xxx) — peso: 30% no score geral
+#   Avalia probes, recursos, HPA, réplicas, estratégia, segurança de pod.
+#
+# Pilar SECURITY (SEC-xxx) — peso: 25%
+#   Avalia imagem, filesystem, privilege escalation, capabilities.
+#
+# Pilar PERFORMANCE (PERF-xxx) — peso: 15%
+#   Avalia ratio CPU limit/request e target de CPU no HPA.
+#
+# Pilar OPERATIONAL (OPS-xxx) — peso: 10%
+#   Avalia instrumentação Datadog (labels obrigatórios).
+#
+# Nota: RES-017, RES-018, RES-019 só se aplicam a workloads com
+#       annotation titlis.io/criticality=high (criticality_profile: high).
+# -----------------------------------------------------------------------------
+rules:
+
+  # --- RESILIENCE ---
+
+  # RES-001: Liveness probe configurado no primeiro container
+  # - id: "RES-001"
+  #   enabled: true
+  #   weight: 10.0
+  #   severity: "error"
+
+  # RES-002: Readiness probe configurado no primeiro container
+  # - id: "RES-002"
+  #   enabled: true
+  #   weight: 10.0
+  #   severity: "error"
+
+  # RES-003: CPU request definido no primeiro container
+  # - id: "RES-003"
+  #   enabled: true
+  #   weight: 8.0
+  #   severity: "error"
+
+  # RES-004: CPU limit definido no primeiro container
+  # - id: "RES-004"
+  #   enabled: true
+  #   weight: 5.0
+  #   severity: "warning"
+
+  # RES-005: Memory request definido no primeiro container
+  # - id: "RES-005"
+  #   enabled: true
+  #   weight: 8.0
+  #   severity: "error"
+
+  # RES-006: Memory limit definido no primeiro container
+  # - id: "RES-006"
+  #   enabled: true
+  #   weight: 5.0
+  #   severity: "warning"
+
+  # RES-007: HPA existe para o Deployment
+  # - id: "RES-007"
+  #   enabled: true
+  #   weight: 7.0
+  #   severity: "warning"
+
+  # RES-008: HPA tem ao menos uma métrica configurada
+  # - id: "RES-008"
+  #   enabled: true
+  #   weight: 5.0
+  #   severity: "warning"
+
+  # RES-009: TerminationGracePeriodSeconds configurado
+  # - id: "RES-009"
+  #   enabled: true
+  #   weight: 3.0
+  #   severity: "info"
+
+  # RES-010: Container configurado para rodar como não-root (runAsNonRoot: true)
+  # - id: "RES-010"
+  #   enabled: true
+  #   weight: 10.0
+  #   severity: "error"
+
+  # RES-011: Pod Security Context definido no spec do pod
+  # - id: "RES-011"
+  #   enabled: true
+  #   weight: 5.0
+  #   severity: "warning"
+
+  # RES-012: NetworkPolicy existe no namespace
+  # - id: "RES-012"
+  #   enabled: true
+  #   weight: 7.0
+  #   severity: "warning"
+
+  # RES-013: Deployment tem ao menos 2 réplicas
+  # - id: "RES-013"
+  #   enabled: true
+  #   weight: 6.0
+  #   severity: "warning"
+
+  # RES-014: Deployment tem estratégia de rollout definida (RollingUpdate recomendado)
+  # - id: "RES-014"
+  #   enabled: true
+  #   weight: 4.0
+  #   severity: "warning"
+
+  # RES-016: HPA minReplicas >= 2
+  # - id: "RES-016"
+  #   enabled: true
+  #   weight: 5.0
+  #   severity: "warning"
+
+  # RES-017: HPA scaleUp stabilizationWindowSeconds = 0 (escala rápida para cima)
+  #          Aplica-se apenas a workloads com annotation titlis.io/criticality=high
+  # - id: "RES-017"
+  #   enabled: true
+  #   weight: 4.0
+  #   severity: "warning"
+
+  # RES-018: HPA scaleDown stabilizationWindowSeconds >= 300s (escala lenta para baixo)
+  #          Aplica-se apenas a workloads com annotation titlis.io/criticality=high
+  # - id: "RES-018"
+  #   enabled: true
+  #   weight: 4.0
+  #   severity: "warning"
+
+  # RES-019: HPA tem behavior policies em scaleUp e scaleDown
+  #          Aplica-se apenas a workloads com annotation titlis.io/criticality=high
+  # - id: "RES-019"
+  #   enabled: true
+  #   weight: 4.0
+  #   severity: "warning"
+
+  # --- SECURITY ---
+
+  # SEC-001: Imagem não usa tag :latest
+  # - id: "SEC-001"
+  #   enabled: true
+  #   weight: 9.0
+  #   severity: "error"
+
+  # SEC-002: ReadOnlyRootFilesystem habilitado no container
+  # - id: "SEC-002"
+  #   enabled: true
+  #   weight: 6.0
+  #   severity: "warning"
+
+  # SEC-003: AllowPrivilegeEscalation explicitamente false
+  # - id: "SEC-003"
+  #   enabled: true
+  #   weight: 8.0
+  #   severity: "error"
+
+  # SEC-004: Capabilities dropped configuradas no container
+  # - id: "SEC-004"
+  #   enabled: true
+  #   weight: 5.0
+  #   severity: "warning"
+
+  # --- PERFORMANCE ---
+
+  # PERF-001: Ratio CPU limit / CPU request <= 3.0
+  # - id: "PERF-001"
+  #   enabled: true
+  #   weight: 4.0
+  #   severity: "warning"
+
+  # PERF-002: HPA CPU target no range 50-90%
+  # - id: "PERF-002"
+  #   enabled: true
+  #   weight: 3.0
+  #   severity: "info"
+
+  # PERF-003: HPA CPU target <= 70% (ceiling conservador)
+  # - id: "PERF-003"
+  #   enabled: true
+  #   weight: 3.0
+  #   severity: "info"
+
+  # --- OPERATIONAL ---
+
+  # OPS-001: Labels Datadog presentes (tags.datadoghq.com/env, /service, /version +
+  #          admission.datadoghq.com/enabled=true) no Deployment e no Pod template
+  # - id: "OPS-001"
+  #   enabled: true
+  #   weight: 8.0
+  #   severity: "warning"
+
+  # --- REGRAS CUSTOMIZADAS (exemplos) ---
+  # Para adicionar uma nova regra, implemente a função validadora em rules.go,
+  # registre em ruleFuncs e adicione à lista defaultRules().
+  # Exemplo de entrada no YAML:
+  #
+  # - id: "RES-015"
+  #   name: "Pod Disruption Budget"
+  #   pillar: "resilience"
+  #   type: "boolean"
+  #   severity: "warning"
+  #   weight: 6.0
+  #   enabled: true
+  #   applies_to: ["Deployment"]
+  #   description: "Deployment deve ter PodDisruptionBudget configurado"
+  #   remediation: "resources"

@@ -1,0 +1,42 @@
+replicaCount: 1
+
+image:
+  repository: kailima/titlis-operator-go
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+namespace: titlis-system
+
+castai:
+  enabled: true
+  monitorNamespace: "castai-agent"
+  intervalSeconds: 60
+  clusterName: "develop"
+  secretName: "titlis-castai-keys"   # keys: CASTAI_API_KEY, CASTAI_CLUSTER_ID (opcional)
+
+datadog:
+  site: "datadoghq.com"
+  secretName: "titlis-datadog-keys"  # keys: api-key, app-key
+
+logging:
+  level: "info"
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "128Mi"
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+rbac:
+  create: true
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

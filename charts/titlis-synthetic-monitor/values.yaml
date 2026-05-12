@@ -1,0 +1,35 @@
+replicaCount: 1
+
+image:
+  repository: kailima/titlis-operator-go
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+namespace: titlis-system
+
+synthetic:
+  configPath: "/config/synthetic-checks.yaml"
+
+datadog:
+  site: "datadoghq.com"
+  secretName: "titlis-datadog-keys"  # keys: api-key, app-key
+
+logging:
+  level: "info"
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "128Mi"
+
+serviceAccount:
+  create: false   # não precisa de acesso ao K8s API
+  annotations: {}
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

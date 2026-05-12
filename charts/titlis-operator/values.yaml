@@ -1,0 +1,93 @@
+replicaCount: 1
+
+image:
+  repository: kailima/titlis-operator-go
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Kubernetes namespace where the operator runs
+namespace: titlis-system
+
+operator:
+  reconciliation:
+    intervalSeconds: 300
+    debounceSeconds: 30
+  leaderElection:
+    enabled: true
+    namespace: "titlis-system"
+
+kubernetes:
+  clusterName: "unknown"
+  namespace: "titlis-system"
+
+logging:
+  level: "info"
+  format: "json"
+
+# Controllers feature flags
+controllers:
+  scorecardEnabled: true
+  sloEnabled: true
+  autoSloCreationEnabled: false
+  autoSloDefaultTarget: "99.0"
+  autoSloDefaultWarning: "99.5"
+  autoSloDefaultTimeframe: "30d"
+  autoSloRequireDatadogService: "true"
+  autoSloPendingChangesPollIntervalSeconds: "30"
+
+# Synthetic monitor
+synthetic:
+  enabled: false
+  configPath: "config/synthetic-checks.yaml"
+  monitorName: ""
+  monitorUrl: ""
+  intervalSeconds: 60
+  timeoutSeconds: 10
+
+# Scorecard
+scorecard:
+  configPath: "config/scorecard-config.yaml"
+
+# Datadog — secrets must be in a pre-existing Secret (datadogSecretName)
+datadog:
+  site: "datadoghq.com"
+  secretName: "titlis-datadog-keys"   # must have keys: api-key, app-key
+
+# Slack notifications (optional)
+slack:
+  enabled: false
+  defaultChannel: "#titlis-notifications"
+  rateLimitPerMinute: 60
+  rateLimitPerHour: 360
+  timeoutSeconds: 10
+  maxRetries: 3
+  secretName: "titlis-slack-keys"   # must have: SLACK_BOT_TOKEN, SLACK_WEBHOOK_URL
+
+# titlis-api integration (optional)
+titlisApi:
+  enabled: false
+  host: "titlis-api.titlis-system.svc.cluster.local"
+  httpPort: 8080
+  timeoutSeconds: 10
+  connectTimeoutSeconds: 3
+  secretName: "titlis-api-keys"   # must have: TITLIS_API_API_KEY
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+rbac:
+  create: true
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

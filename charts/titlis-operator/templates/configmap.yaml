@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-config" (include "titlis.fullname" .) }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "titlis.labels" . | nindent 4 }}
+data:
+  # Kubernetes
+  KUBERNETES_CLUSTER_NAME: {{ .Values.kubernetes.clusterName | quote }}
+  KUBERNETES_NAMESPACE: {{ .Values.kubernetes.namespace | quote }}
+
+  # Operator behavior
+  RECONCILE_INTERVAL_SECONDS: {{ .Values.operator.reconciliation.intervalSeconds | quote }}
+  DEBOUNCE_SECONDS: {{ .Values.operator.reconciliation.debounceSeconds | quote }}
+  ENABLE_LEADER_ELECTION: {{ .Values.operator.leaderElection.enabled | quote }}
+  LEADER_ELECTION_NAMESPACE: {{ .Values.operator.leaderElection.namespace | quote }}
+
+  # Logging
+  LOG_LEVEL: {{ .Values.logging.level | quote }}
+  LOG_FORMAT: {{ .Values.logging.format | quote }}
+
+  # Controllers
+  ENABLE_SCORECARD_CONTROLLER: {{ .Values.controllers.scorecardEnabled | quote }}
+  ENABLE_SLO_CONTROLLER: {{ .Values.controllers.sloEnabled | quote }}
+  ENABLE_AUTO_SLO_CREATION: {{ .Values.controllers.autoSloCreationEnabled | quote }}
+  AUTO_SLO_DEFAULT_TARGET: {{ .Values.controllers.autoSloDefaultTarget | quote }}
+  AUTO_SLO_DEFAULT_WARNING: {{ .Values.controllers.autoSloDefaultWarning | quote }}
+  AUTO_SLO_DEFAULT_TIMEFRAME: {{ .Values.controllers.autoSloDefaultTimeframe | quote }}
+  AUTO_SLO_REQUIRE_DATADOG_SERVICE: {{ .Values.controllers.autoSloRequireDatadogService | quote }}
+  AUTO_SLO_PENDING_CHANGES_POLL_INTERVAL_SECONDS: {{ .Values.controllers.autoSloPendingChangesPollIntervalSeconds | quote }}
+
+  # Synthetic monitor
+  ENABLE_SYNTHETIC_MONITOR: {{ .Values.synthetic.enabled | quote }}
+  SYNTHETIC_CHECKS_CONFIG_PATH: {{ .Values.synthetic.configPath | quote }}
+  SYNTHETIC_MONITOR_NAME: {{ .Values.synthetic.monitorName | quote }}
+  SYNTHETIC_MONITOR_URL: {{ .Values.synthetic.monitorUrl | quote }}
+  SYNTHETIC_MONITOR_INTERVAL_SECONDS: {{ .Values.synthetic.intervalSeconds | quote }}
+  SYNTHETIC_MONITOR_TIMEOUT_SECONDS: {{ .Values.synthetic.timeoutSeconds | quote }}
+
+  # Scorecard
+  SCORECARD_CONFIG_PATH: {{ .Values.scorecard.configPath | quote }}
+
+  # Datadog (non-secret)
+  DD_SITE: {{ .Values.datadog.site | quote }}
+
+  # Slack (non-secret)
+  SLACK_ENABLED: {{ .Values.slack.enabled | quote }}
+  SLACK_DEFAULT_CHANNEL: {{ .Values.slack.defaultChannel | quote }}
+  SLACK_RATE_LIMIT_PER_MINUTE: {{ .Values.slack.rateLimitPerMinute | quote }}
+  SLACK_RATE_LIMIT_PER_HOUR: {{ .Values.slack.rateLimitPerHour | quote }}
+  SLACK_TIMEOUT_SECONDS: {{ .Values.slack.timeoutSeconds | quote }}
+  SLACK_MAX_RETRIES: {{ .Values.slack.maxRetries | quote }}
+
+  # titlis-api (non-secret)
+  TITLIS_API_ENABLED: {{ .Values.titlisApi.enabled | quote }}
+  TITLIS_API_HOST: {{ .Values.titlisApi.host | quote }}
+  TITLIS_API_HTTP_PORT: {{ .Values.titlisApi.httpPort | quote }}
+  TITLIS_API_HTTP_TIMEOUT_SECONDS: {{ .Values.titlisApi.timeoutSeconds | quote }}
+  TITLIS_API_CONNECT_TIMEOUT_SECONDS: {{ .Values.titlisApi.connectTimeoutSeconds | quote }}
