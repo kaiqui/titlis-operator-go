@@ -45,6 +45,10 @@ rules:
     verbs: [get, list, watch]
 
   - apiGroups: [""]
+    resources: [nodes]
+    verbs: [list]
+
+  - apiGroups: [""]
     resources: [secrets]
     verbs: [get, list, watch]
 ---

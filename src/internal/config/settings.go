@@ -5,6 +5,8 @@ import "fmt"
 type Settings struct {
 	// Kubernetes
 	KubernetesNamespace   string `envconfig:"KUBERNETES_NAMESPACE" default:"titlis-system"`
+	// KubernetesClusterName is resolved at startup via cluster.ResolveClusterName (env → ConfigMap seal → Node labels).
+	// Set this env var explicitly to pin the name and prevent any automatic change.
 	KubernetesClusterName string `envconfig:"KUBERNETES_CLUSTER_NAME" default:"unknown"`
 
 	// Controllers

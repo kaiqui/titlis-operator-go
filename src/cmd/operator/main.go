@@ -19,6 +19,7 @@ import (
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/titlis/operator/api/v1alpha1"
+	"github.com/titlis/operator/internal/cluster"
 	"github.com/titlis/operator/internal/config"
 	"github.com/titlis/operator/internal/controller"
 	"github.com/titlis/operator/internal/notification"
@@ -30,6 +31,7 @@ import (
 	"github.com/titlis/operator/internal/titlisapi"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func main() {
@@ -65,6 +67,16 @@ func main() {
 		LeaderElectionNamespace: cfg.LeaderElectionNamespace,
 	})
 	must(err)
+
+	// --- cluster name resolution ---
+	directClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "failed to create client for cluster name resolution, using env/default")
+	} else {
+		resolvedName, source := cluster.ResolveClusterName(ctx, directClient, cfg.KubernetesNamespace)
+		cfg.KubernetesClusterName = resolvedName
+		setupLog.Info("cluster name resolved", "name", resolvedName, "source", source)
+	}
 
 	// --- titlis-api client ---
 	var titlisClient *titlisapi.Client
