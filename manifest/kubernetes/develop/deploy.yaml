@@ -1,0 +1,248 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: titlis-operator-config
+  namespace: __NAMESPACE__
+data:
+  KUBERNETES_NAMESPACE: "__NAMESPACE__"
+  KUBERNETES_CLUSTER_NAME: "__CLUSTER_NAME__"
+  LEADER_ELECTION_NAMESPACE: "__NAMESPACE__"
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  RECONCILE_INTERVAL_SECONDS: "300"
+  DEBOUNCE_SECONDS: "30"
+  ENABLE_LEADER_ELECTION: "true"
+  ENABLE_SCORECARD_CONTROLLER: "true"
+  ENABLE_SLO_CONTROLLER: "true"
+  ENABLE_AUTO_SLO_CREATION: "false"
+  AUTO_SLO_DEFAULT_TARGET: "99.0"
+  AUTO_SLO_DEFAULT_WARNING: "99.5"
+  AUTO_SLO_DEFAULT_TIMEFRAME: "30d"
+  AUTO_SLO_REQUIRE_DATADOG_SERVICE: "true"
+  AUTO_SLO_PENDING_CHANGES_POLL_INTERVAL_SECONDS: "30"
+  SCORECARD_CONFIG_PATH: "/config/scorecard-config.yaml"
+  TITLIS_API_ENABLED: "__TITLIS_API_ENABLED__"
+  TITLIS_API_HOST: "__TITLIS_API_HOST__"
+  TITLIS_API_HTTP_PORT: "8080"
+  TITLIS_API_HTTP_TIMEOUT_SECONDS: "10"
+  TITLIS_API_CONNECT_TIMEOUT_SECONDS: "3"
+  DD_SITE: "datadoghq.com"
+  SLACK_ENABLED: "false"
+  SLACK_DEFAULT_CHANNEL: "#sre-notifications"
+  SLACK_RATE_LIMIT_PER_MINUTE: "60"
+  SLACK_RATE_LIMIT_PER_HOUR: "360"
+  SLACK_TIMEOUT_SECONDS: "10"
+  SLACK_MAX_RETRIES: "3"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: titlis-synthetic-monitor-config
+  namespace: __NAMESPACE__
+data:
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  ENABLE_SYNTHETIC_MONITOR: "true"
+  SYNTHETIC_CHECKS_CONFIG_PATH: "/config/synthetic-checks.yaml"
+  DD_SITE: "datadoghq.com"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: titlis-castai-monitor-config
+  namespace: __NAMESPACE__
+data:
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  ENABLE_CASTAI_MONITOR: "true"
+  CASTAI_CLUSTER_NAME: "__CLUSTER_NAME__"
+  CASTAI_MONITOR_NAMESPACE: "castai-agent"
+  CASTAI_MONITOR_INTERVAL_SECONDS: "60"
+  DD_SITE: "datadoghq.com"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: titlis-operator-secrets
+  namespace: __NAMESPACE__
+type: Opaque
+stringData:
+  DD_API_KEY: "__DD_API_KEY__"
+  DD_APP_KEY: "__DD_APP_KEY__"
+  SLACK_WEBHOOK_URL: "__SLACK_WEBHOOK_URL__"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: titlis-operator-api-key
+  namespace: __NAMESPACE__
+type: Opaque
+stringData:
+  TITLIS_API_API_KEY: "__TITLIS_API_API_KEY__"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: titlis-operator
+  namespace: __NAMESPACE__
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: titlis-operator-preprod-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "events", "namespaces", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/status", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers", "horizontalpodautoscalers/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["titlis.io"]
+    resources: ["sloconfigs", "sloconfigs/status", "appscorecards", "appscorecards/status", "appremediations", "appremediations/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: titlis-operator-preprod-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: titlis-operator-preprod-role
+subjects:
+  - kind: ServiceAccount
+    name: titlis-operator
+    namespace: __NAMESPACE__
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: titlis-operator
+  namespace: __NAMESPACE__
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: titlis-operator
+  template:
+    metadata:
+      labels:
+        app: titlis-operator
+    spec:
+      serviceAccountName: titlis-operator
+      containers:
+        - name: titlis-operator
+          image: __DOCKERHUB_USER__/titlis-operator-go:__IMAGE_TAG__
+          imagePullPolicy: __IMAGE_PULL_POLICY__
+          command: ["/titlis-operator"]
+          ports:
+            - containerPort: 8081
+              name: health
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          envFrom:
+            - configMapRef:
+                name: titlis-operator-config
+            - secretRef:
+                name: titlis-operator-secrets
+            - secretRef:
+                name: titlis-operator-api-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: titlis-synthetic-monitor
+  namespace: __NAMESPACE__
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: titlis-synthetic-monitor
+  template:
+    metadata:
+      labels:
+        app: titlis-synthetic-monitor
+    spec:
+      containers:
+        - name: titlis-synthetic-monitor
+          image: __DOCKERHUB_USER__/titlis-operator-go:__IMAGE_TAG__
+          imagePullPolicy: __IMAGE_PULL_POLICY__
+          command: ["/synthetic-monitor"]
+          envFrom:
+            - configMapRef:
+                name: titlis-synthetic-monitor-config
+            - secretRef:
+                name: titlis-operator-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: titlis-castai-monitor
+  namespace: __NAMESPACE__
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: titlis-castai-monitor
+  template:
+    metadata:
+      labels:
+        app: titlis-castai-monitor
+    spec:
+      serviceAccountName: titlis-operator
+      containers:
+        - name: titlis-castai-monitor
+          image: __DOCKERHUB_USER__/titlis-operator-go:__IMAGE_TAG__
+          imagePullPolicy: __IMAGE_PULL_POLICY__
+          command: ["/castai-monitor"]
+          envFrom:
+            - configMapRef:
+                name: titlis-castai-monitor-config
+            - secretRef:
+                name: titlis-operator-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
