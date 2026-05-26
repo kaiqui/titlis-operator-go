@@ -61,6 +61,10 @@ func ExtractSnapshot(
 		EngineSlug:       engineSlug,
 		HasNetworkPolicy: hasNetPolicy,
 		HasPodSecurityContext: deploy.Spec.Template.Spec.SecurityContext != nil,
+		// HasDatadog: true when the Deployment has the Unified Service Tagging label set by
+		// the Datadog Admission Controller. Used by scoreops to skip Datadog-specific rules
+		// (OBS-001, OBS-002) for workloads not tracked in Datadog Service Catalog.
+		HasDatadog: deploy.Labels["tags.datadoghq.com/service"] != "",
 	}
 
 	if deploy.Annotations["titlis.io/criticality"] == "high" {

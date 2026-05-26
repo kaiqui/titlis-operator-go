@@ -40,4 +40,9 @@ type WorkloadSnapshot struct {
 	HPAScaleUpStabilizationSec   int  `json:"hpa_scale_up_stabilization_sec"`
 	HPAScaleDownStabilizationSec int  `json:"hpa_scale_down_stabilization_sec"`
 	HPAHasBehaviorPolicies       bool `json:"hpa_has_behavior_policies"`
+
+	// HasDatadog is true when the Deployment carries the mandatory Datadog Unified Service Tagging
+	// labels (tags.datadoghq.com/service). Injected by the operator so titlis-api can pass it to
+	// scoreops without an extra DB lookup on the hot scoring path.
+	HasDatadog bool `json:"has_datadog,omitempty"`
 }
