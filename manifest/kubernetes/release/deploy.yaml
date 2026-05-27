@@ -143,6 +143,8 @@ spec:
     metadata:
       labels:
         app: titlis-operator
+        titlis.io/github-owner: kaiqui
+        titlis.io/repo: titlis-operator-go
     spec:
       serviceAccountName: titlis-operator
       containers:
