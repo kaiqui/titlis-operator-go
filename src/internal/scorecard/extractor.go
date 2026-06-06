@@ -34,6 +34,16 @@ func findHPA(ctx context.Context, ns, deployName string, k8s client.Client) *aut
 	return nil
 }
 
+// backstageComponent returns the Backstage entity name from Deployment annotations.
+// Checks "backstage.io/kubernetes-id" first (set by Backstage K8s plugin), then
+// falls back to "backstage.io/entity-name" (set manually by teams).
+func backstageComponent(annotations map[string]string) string {
+	if v := annotations["backstage.io/kubernetes-id"]; v != "" {
+		return v
+	}
+	return annotations["backstage.io/entity-name"]
+}
+
 func networkPolicyExists(ctx context.Context, ns string, k8s client.Client) bool {
 	var list networkingv1.NetworkPolicyList
 	if err := k8s.List(ctx, &list, client.InNamespace(ns), &client.ListOptions{
@@ -66,6 +76,8 @@ func ExtractSnapshot(
 		// (OBS-001, OBS-002) for workloads not tracked in Datadog Service Catalog.
 		HasDatadog: deploy.Labels["tags.datadoghq.com/service"] != "",
 	}
+
+	snap.BackstageComponent = backstageComponent(deploy.Annotations)
 
 	if deploy.Annotations["titlis.io/criticality"] == "high" {
 		snap.Criticality = "high"

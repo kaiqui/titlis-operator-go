@@ -45,4 +45,9 @@ type WorkloadSnapshot struct {
 	// labels (tags.datadoghq.com/service). Injected by the operator so titlis-api can pass it to
 	// scoreops without an extra DB lookup on the hot scoring path.
 	HasDatadog bool `json:"has_datadog,omitempty"`
+
+	// BackstageComponent is the entity name registered in the Backstage catalog, extracted from
+	// the Deployment annotation "backstage.io/kubernetes-id" (set by the Backstage K8s plugin)
+	// or the fallback "backstage.io/entity-name". Empty when the workload is not in Backstage.
+	BackstageComponent string `json:"backstage_component,omitempty"`
 }
