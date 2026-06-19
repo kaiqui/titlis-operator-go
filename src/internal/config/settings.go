@@ -13,6 +13,15 @@ type Settings struct {
 	EnableScorecardController bool `envconfig:"ENABLE_SCORECARD_CONTROLLER" default:"true"`
 	EnableSLOController       bool `envconfig:"ENABLE_SLO_CONTROLLER" default:"true"`
 
+	// Queue monitoring
+	QueueReconcileIntervalSeconds int    `envconfig:"QUEUE_RECONCILE_INTERVAL_SECONDS" default:"300"`
+	QueueLearningCycles           int    `envconfig:"QUEUE_LEARNING_CYCLES" default:"7"`
+	QueueProviders                string `envconfig:"QUEUE_PROVIDERS" default:"gcp_pubsub"`
+
+	// Queue→service env-var correlation (Fase 3). Disabled by default; heavier scan.
+	EnableQueueLinkScan           bool `envconfig:"ENABLE_QUEUE_LINK_SCAN" default:"false"`
+	QueueLinkScanIntervalSeconds  int  `envconfig:"QUEUE_LINK_SCAN_INTERVAL_SECONDS" default:"900"`
+
 	// Reconcile
 	ReconcileIntervalSeconds int `envconfig:"RECONCILE_INTERVAL_SECONDS" default:"300"`
 	DebounceSeconds          int `envconfig:"DEBOUNCE_SECONDS" default:"30"`

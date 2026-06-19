@@ -50,4 +50,7 @@ type WorkloadSnapshot struct {
 	// the Deployment annotation "backstage.io/kubernetes-id" (set by the Backstage K8s plugin)
 	// or the fallback "backstage.io/entity-name". Empty when the workload is not in Backstage.
 	BackstageComponent string `json:"backstage_component,omitempty"`
+
+	Team        string `json:"team,omitempty"`
+	ServiceRepo string `json:"service_repo,omitempty"`
 }

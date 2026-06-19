@@ -26,6 +26,7 @@ import (
 	slacknotifier "github.com/titlis/operator/internal/notification/slack"
 	ddatadog "github.com/titlis/operator/internal/observability/datadog"
 	"github.com/titlis/operator/internal/scorecard"
+	"github.com/titlis/operator/internal/servicedef"
 	"github.com/titlis/operator/internal/slo"
 	"github.com/titlis/operator/internal/synthetic"
 	"github.com/titlis/operator/internal/titlisapi"
@@ -99,11 +100,16 @@ func main() {
 	scorecardCfg := scorecard.LoadConfig(cfg.ScorecardConfigPath)
 
 	if cfg.EnableScorecardController {
+		var svcSyncer *servicedef.Syncer
+		if titlisClient != nil {
+			svcSyncer = servicedef.NewSyncer(titlisClient, &serviceDefAdapter{client: titlisClient})
+		}
 		must((&controller.ScorecardController{
-			Client:     mgr.GetClient(),
-			Exclusions: scorecard.NewExclusionFilter(scorecardCfg),
-			TitlisAPI:  titlisClient,
-			Settings:   &cfg,
+			Client:      mgr.GetClient(),
+			Exclusions:  scorecard.NewExclusionFilter(scorecardCfg),
+			TitlisAPI:   titlisClient,
+			Settings:    &cfg,
+			ServiceSync: svcSyncer,
 		}).SetupWithManager(mgr))
 		setupLog.Info("scorecard controller registered")
 	}
@@ -144,11 +150,53 @@ func main() {
 			"site_checks", len(siteChecks), "json_checks", len(jsonChecks))
 	}
 
+	if titlisClient != nil {
+		queueInterval := time.Duration(cfg.QueueReconcileIntervalSeconds) * time.Second
+		must(mgr.Add(&controller.QueueRunner{
+			TitlisAPI:      titlisClient,
+			PubSub:         ddatadog.NewPubSubClient(),
+			Monitors:       ddatadog.NewMonitorManager(),
+			Interval:       queueInterval,
+			LearningCycles: cfg.QueueLearningCycles,
+			Log:            ctrl.Log.WithName("queuerunner"),
+		}))
+		setupLog.Info("queue runner registered", "interval", queueInterval, "learning_cycles", cfg.QueueLearningCycles)
+	}
+
+	if titlisClient != nil && cfg.EnableQueueLinkScan {
+		linkInterval := time.Duration(cfg.QueueLinkScanIntervalSeconds) * time.Second
+		must(mgr.Add(&controller.QueueLinkRunner{
+			TitlisAPI: titlisClient,
+			K8s:       mgr.GetClient(),
+			Interval:  linkInterval,
+			Log:       ctrl.Log.WithName("queuelink"),
+		}))
+		setupLog.Info("queue link runner registered", "interval", linkInterval)
+	}
+
 	must(mgr.AddHealthzCheck("healthz", healthz.Ping))
 	must(mgr.AddReadyzCheck("readyz", healthz.Ping))
 
 	setupLog.Info("starting manager")
 	must(mgr.Start(ctx))
+}
+
+type serviceDefAdapter struct {
+	client *titlisapi.Client
+}
+
+func (a *serviceDefAdapter) SendServiceDefinitionSynced(ctx context.Context, p servicedef.ServiceDefinitionPayload) {
+	a.client.SendServiceDefinitionSynced(ctx, titlisapi.ServiceDefinitionSyncedPayload{
+		ServiceName:  p.ServiceName,
+		Team:         p.Team,
+		Product:      p.Product,
+		Tier:         p.Tier,
+		Description:  p.Description,
+		RepoURL:      p.RepoURL,
+		Workloads:    p.Workloads,
+		RawYAML:      p.RawYAML,
+		Integrations: p.Integrations,
+	})
 }
 
 // syntheticRunnable wraps synthetic.Run as a manager.Runnable.

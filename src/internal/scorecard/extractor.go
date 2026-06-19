@@ -78,6 +78,7 @@ func ExtractSnapshot(
 	}
 
 	snap.BackstageComponent = backstageComponent(deploy.Annotations)
+	snap.ServiceRepo = deploy.Annotations["titlis.io/service-repo"]
 
 	if deploy.Annotations["titlis.io/criticality"] == "high" {
 		snap.Criticality = "high"

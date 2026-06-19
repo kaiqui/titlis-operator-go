@@ -1,24 +1,11 @@
+apiVersion: titlis.io/v1
+kind: Service
 metadata:
   name: titlis-operator-go
-  workload_match:
-    namespaces: [titlis-system]
-    name_pattern: "^service-sre-titlis-operator-two$"
 spec:
-  owner:
-    team: platform
-    contacts:
-      - type: slack
-        value: "#platform-oncall"
-  gitops:
-    paths:
-      dev:
-        path: manifest/kubernetes/develop/deploy.yaml
-        base_branch: develop
-      hml:
-        path: manifest/kubernetes/release/deploy.yaml
-        base_branch: release
-      prd:
-        path: manifest/kubernetes/main/deploy.yaml
-        base_branch: main
-  remediation:
-    enabled: false
+  product: titlis
+  team: platform
+  tier: tier-1
+  description: Operator K8s oficial — extrai snapshots e sincroniza SLOs (Go/controller-runtime).
+  workloads:
+    - service-sre-titlis-operator-two

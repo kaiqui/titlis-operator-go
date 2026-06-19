@@ -10,14 +10,16 @@ import (
 
 	"github.com/titlis/operator/internal/config"
 	"github.com/titlis/operator/internal/scorecard"
+	"github.com/titlis/operator/internal/servicedef"
 	"github.com/titlis/operator/internal/titlisapi"
 )
 
 type ScorecardController struct {
 	client.Client
-	Exclusions *scorecard.ExclusionFilter
-	TitlisAPI  *titlisapi.Client
-	Settings   *config.Settings
+	Exclusions  *scorecard.ExclusionFilter
+	TitlisAPI   *titlisapi.Client
+	Settings    *config.Settings
+	ServiceSync *servicedef.Syncer
 }
 
 func (r *ScorecardController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -53,6 +55,10 @@ func (r *ScorecardController) Reconcile(ctx context.Context, req ctrl.Request) (
 		"cluster", snap.Cluster,
 	)
 	go r.TitlisAPI.EvaluateWorkload(context.Background(), snap)
+
+	if r.ServiceSync != nil && snap.ServiceRepo != "" {
+		go r.ServiceSync.Sync(context.Background(), snap.ServiceRepo, snap.Name)
+	}
 
 	return ctrl.Result{RequeueAfter: reconcileInterval(r.Settings)}, nil
 }
