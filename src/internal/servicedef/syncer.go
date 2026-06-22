@@ -12,34 +12,57 @@ import (
 	"github.com/titlis/operator/internal/queue"
 )
 
+// WorkloadMatch correlaciona o service.yaml com workloads (namespaces + regex no nome).
+type WorkloadMatch struct {
+	Namespaces  []string `yaml:"namespaces" json:"namespaces"`
+	NamePattern string   `yaml:"name_pattern" json:"name_pattern"`
+}
+
+// GitopsPath é o caminho do manifest + base branch por ambiente.
+type GitopsPath struct {
+	Path       string `yaml:"path" json:"path"`
+	BaseBranch string `yaml:"base_branch" json:"base_branch"`
+}
+
 // ServiceYAML represents the parsed .titlis/service.yaml file.
 type ServiceYAML struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`
 	Metadata   struct {
-		Name string `yaml:"name"`
+		Name          string        `yaml:"name"`
+		WorkloadMatch WorkloadMatch `yaml:"workload_match"`
 	} `yaml:"metadata"`
 	Spec struct {
-		Team         string                   `yaml:"team"`
-		Product      string                   `yaml:"product"`
-		Tier         string                   `yaml:"tier"`
-		Description  string                   `yaml:"description"`
-		Workloads    []string                 `yaml:"workloads"`
+		Team        string `yaml:"team"` // legado; preferir owner.team
+		Owner       struct {
+			Team string `yaml:"team"`
+		} `yaml:"owner"`
+		Product     string `yaml:"product"`
+		Tier        string `yaml:"tier"`
+		Description string `yaml:"description"`
+		Workloads   []string `yaml:"workloads"`
+		Gitops      struct {
+			Paths map[string]GitopsPath `yaml:"paths"`
+		} `yaml:"gitops"`
+		Remediation  map[string]interface{}   `yaml:"remediation"`
 		Integrations []queue.QueueIntegration `yaml:"integrations"`
 	} `yaml:"spec"`
 }
 
 // ServiceDefinitionPayload is the data sent in the service_definition_synced event.
 type ServiceDefinitionPayload struct {
-	ServiceName  string                   `json:"service_name"`
-	Team         string                   `json:"team"`
-	Product      string                   `json:"product,omitempty"`
-	Tier         string                   `json:"tier,omitempty"`
-	Description  string                   `json:"description,omitempty"`
-	RepoURL      string                   `json:"repo_url,omitempty"`
-	Workloads    []string                 `json:"workloads"`
-	RawYAML      string                   `json:"raw_yaml,omitempty"`
-	Integrations []queue.QueueIntegration `json:"integrations,omitempty"`
+	ServiceName   string                   `json:"service_name"`
+	Team          string                   `json:"team"`
+	Product       string                   `json:"product,omitempty"`
+	Tier          string                   `json:"tier,omitempty"`
+	Description   string                   `json:"description,omitempty"`
+	RepoURL       string                   `json:"repo_url,omitempty"`
+	Workloads     []string                 `json:"workloads"`
+	RawYAML       string                   `json:"raw_yaml,omitempty"`
+	Integrations  []queue.QueueIntegration `json:"integrations,omitempty"`
+	WorkloadMatch *WorkloadMatch           `json:"workload_match,omitempty"`
+	GitopsPaths   map[string]GitopsPath    `json:"gitops_paths,omitempty"`
+	Remediation   map[string]interface{}   `json:"remediation,omitempty"`
 }
 
 // GitHubTokenProvider provides the GitHub token for the operator's tenant.
@@ -100,7 +123,11 @@ func (s *Syncer) Sync(ctx context.Context, repoURL, workloadName string) {
 		logger.Error(err, "failed to parse .titlis/service.yaml")
 		return
 	}
-	if svc.Spec.Team == "" {
+	team := svc.Spec.Owner.Team
+	if team == "" {
+		team = svc.Spec.Team
+	}
+	if team == "" {
 		logger.V(1).Info(".titlis/service.yaml has no team defined")
 		return
 	}
@@ -115,19 +142,28 @@ func (s *Syncer) Sync(ctx context.Context, repoURL, workloadName string) {
 		workloads = []string{workloadName}
 	}
 
+	var workloadMatch *WorkloadMatch
+	if svc.Metadata.WorkloadMatch.NamePattern != "" || len(svc.Metadata.WorkloadMatch.Namespaces) > 0 {
+		wm := svc.Metadata.WorkloadMatch
+		workloadMatch = &wm
+	}
+
 	s.eventSender.SendServiceDefinitionSynced(ctx, ServiceDefinitionPayload{
-		ServiceName:  serviceName,
-		Team:         svc.Spec.Team,
-		Product:      svc.Spec.Product,
-		Tier:         svc.Spec.Tier,
-		Description:  svc.Spec.Description,
-		RepoURL:      repoURL,
-		Workloads:    workloads,
-		RawYAML:      rawYAML,
-		Integrations: svc.Spec.Integrations,
+		ServiceName:   serviceName,
+		Team:          team,
+		Product:       svc.Spec.Product,
+		Tier:          svc.Spec.Tier,
+		Description:   svc.Spec.Description,
+		RepoURL:       repoURL,
+		Workloads:     workloads,
+		RawYAML:       rawYAML,
+		Integrations:  svc.Spec.Integrations,
+		WorkloadMatch: workloadMatch,
+		GitopsPaths:   svc.Spec.Gitops.Paths,
+		Remediation:   svc.Spec.Remediation,
 	})
 
-	logger.Info("service definition synced", "service", serviceName, "team", svc.Spec.Team)
+	logger.Info("service definition synced", "service", serviceName, "team", team)
 }
 
 func parseServiceYAML(raw string) (*ServiceYAML, error) {

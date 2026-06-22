@@ -22,6 +22,10 @@ import (
 	"github.com/titlis/operator/internal/cluster"
 	"github.com/titlis/operator/internal/config"
 	"github.com/titlis/operator/internal/controller"
+	"github.com/titlis/operator/internal/discovery"
+	dddiscovery "github.com/titlis/operator/internal/discovery/datadog"
+	k8sdiscovery "github.com/titlis/operator/internal/discovery/kubernetes"
+	oteldiscovery "github.com/titlis/operator/internal/discovery/otel"
 	"github.com/titlis/operator/internal/notification"
 	slacknotifier "github.com/titlis/operator/internal/notification/slack"
 	ddatadog "github.com/titlis/operator/internal/observability/datadog"
@@ -174,6 +178,42 @@ func main() {
 		setupLog.Info("queue link runner registered", "interval", linkInterval)
 	}
 
+	if titlisClient != nil && cfg.EnableDiscovery {
+		// Direct (uncached) client for the periodic sweep — avoids cluster-wide informers for
+		// Secrets/ConfigMaps. One List per type every DISCOVERY_INTERVAL_SECONDS.
+		discoveryClient, derr := client.New(mgr.GetConfig(), client.Options{Scheme: scheme})
+		if derr != nil {
+			setupLog.Error(derr, "failed to create discovery client, skipping discovery")
+		} else {
+			providers := []discovery.Provider{
+				k8sdiscovery.New(discoveryClient, scorecard.NewExclusionFilter(scorecardCfg), cfg.KubernetesClusterName),
+			}
+			if discoveryHasProvider(cfg.DiscoveryProviders, "datadog") {
+				providers = append(providers, dddiscovery.New(titlisClient, dddiscovery.Options{
+					Enabled:        true,
+					IncludeMetrics: cfg.DiscoveryDatadogMetrics,
+				}))
+			}
+			if discoveryHasProvider(cfg.DiscoveryProviders, "otel") {
+				providers = append(providers, oteldiscovery.New(oteldiscovery.Options{
+					Enabled:  true,
+					Endpoint: cfg.DiscoveryOtelEndpoint,
+				}))
+			}
+			reg := discovery.NewRegistry(providers...).
+				WithCorrelators(discovery.ServiceCorrelator{})
+			must(mgr.Add(&discovery.DiscoveryRunner{
+				Registry: reg,
+				Sink:     titlisClient,
+				Cluster:  cfg.KubernetesClusterName,
+				Interval: time.Duration(cfg.DiscoveryIntervalSeconds) * time.Second,
+				Log:      ctrl.Log.WithName("discovery"),
+			}))
+			setupLog.Info("discovery runner registered",
+				"interval", cfg.DiscoveryIntervalSeconds, "providers", cfg.DiscoveryProviders)
+		}
+	}
+
 	must(mgr.AddHealthzCheck("healthz", healthz.Ping))
 	must(mgr.AddReadyzCheck("readyz", healthz.Ping))
 
@@ -187,15 +227,18 @@ type serviceDefAdapter struct {
 
 func (a *serviceDefAdapter) SendServiceDefinitionSynced(ctx context.Context, p servicedef.ServiceDefinitionPayload) {
 	a.client.SendServiceDefinitionSynced(ctx, titlisapi.ServiceDefinitionSyncedPayload{
-		ServiceName:  p.ServiceName,
-		Team:         p.Team,
-		Product:      p.Product,
-		Tier:         p.Tier,
-		Description:  p.Description,
-		RepoURL:      p.RepoURL,
-		Workloads:    p.Workloads,
-		RawYAML:      p.RawYAML,
-		Integrations: p.Integrations,
+		ServiceName:   p.ServiceName,
+		Team:          p.Team,
+		Product:       p.Product,
+		Tier:          p.Tier,
+		Description:   p.Description,
+		RepoURL:       p.RepoURL,
+		Workloads:     p.Workloads,
+		RawYAML:       p.RawYAML,
+		Integrations:  p.Integrations,
+		WorkloadMatch: p.WorkloadMatch,
+		GitopsPaths:   p.GitopsPaths,
+		Remediation:   p.Remediation,
 	})
 }
 
@@ -243,4 +286,13 @@ func must(err error) {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func discoveryHasProvider(csv, name string) bool {
+	for _, p := range strings.Split(csv, ",") {
+		if strings.TrimSpace(p) == name {
+			return true
+		}
+	}
+	return false
 }

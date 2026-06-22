@@ -14,8 +14,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/titlis/operator/internal/config"
+	"github.com/titlis/operator/internal/discovery"
 	"github.com/titlis/operator/internal/model"
 	"github.com/titlis/operator/internal/queue"
+	"github.com/titlis/operator/internal/servicedef"
 )
 
 type Client struct {
@@ -219,19 +221,60 @@ func (c *Client) SendNamespaceExclusionsSync(ctx context.Context, p NamespaceExc
 
 // ServiceDefinitionSyncedPayload is the data sent in the service_definition_synced event.
 type ServiceDefinitionSyncedPayload struct {
-	ServiceName  string                   `json:"service_name"`
-	Team         string                   `json:"team"`
-	Product      string                   `json:"product,omitempty"`
-	Tier         string                   `json:"tier,omitempty"`
-	Description  string                   `json:"description,omitempty"`
-	RepoURL      string                   `json:"repo_url,omitempty"`
-	Workloads    []string                 `json:"workloads"`
-	RawYAML      string                   `json:"raw_yaml,omitempty"`
-	Integrations []queue.QueueIntegration `json:"integrations,omitempty"`
+	ServiceName   string                           `json:"service_name"`
+	Team          string                           `json:"team"`
+	Product       string                           `json:"product,omitempty"`
+	Tier          string                           `json:"tier,omitempty"`
+	Description   string                           `json:"description,omitempty"`
+	RepoURL       string                           `json:"repo_url,omitempty"`
+	Workloads     []string                         `json:"workloads"`
+	RawYAML       string                           `json:"raw_yaml,omitempty"`
+	Integrations  []queue.QueueIntegration         `json:"integrations,omitempty"`
+	WorkloadMatch *servicedef.WorkloadMatch        `json:"workload_match,omitempty"`
+	GitopsPaths   map[string]servicedef.GitopsPath `json:"gitops_paths,omitempty"`
+	Remediation   map[string]interface{}           `json:"remediation,omitempty"`
 }
 
 func (c *Client) SendServiceDefinitionSynced(ctx context.Context, p ServiceDefinitionSyncedPayload) {
 	c.post(ctx, "service_definition_synced", p)
+}
+
+// SendAssetGraph posts the discovered asset graph to titlis-api. Fire-and-forget: failures are
+// logged but never block the discovery sweep. Uses a longer timeout because large clusters produce
+// large graphs (same approach as the queue observe batch path).
+func (c *Client) SendAssetGraph(ctx context.Context, snap discovery.AssetGraphSnapshot) {
+	logger := log.FromContext(ctx)
+
+	body, err := json.Marshal(snap)
+	if err != nil {
+		logger.Error(err, "titlisapi: SendAssetGraph marshal failed")
+		return
+	}
+
+	sendClient := &http.Client{Timeout: 2 * time.Minute, Transport: c.http.Transport}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/v1/operator/discovery/assets", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Api-Key", c.apiKey)
+
+	resp, err := sendClient.Do(req)
+	if err != nil {
+		logger.Error(err, "titlisapi: SendAssetGraph send failed")
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode >= 400 {
+		logger.Info("titlisapi: SendAssetGraph unexpected status", "status", resp.StatusCode)
+	} else {
+		logger.V(1).Info("titlisapi: SendAssetGraph sent",
+			"assets", len(snap.Assets), "relations", len(snap.Relations), "status", resp.StatusCode)
+	}
 }
 
 // OperatorAIConfig holds the GitHub integration config returned by /v1/operator/ai-config.

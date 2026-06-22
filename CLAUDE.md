@@ -19,6 +19,10 @@ Responsabilidades:
 - **SLO pending** — polling de mudanças de SLO propostas pelo titlis-ai
 - **Synthetic monitor** — monitora URLs externas e envia métricas ao Datadog
 - **CastAI monitor** — monitora agente CastAI em execução no cluster
+- **Discovery Engine** (Observability Intelligence Platform) — descobre o grafo de ativos multi-fonte
+  (K8s nativo + Datadog) e o envia normalizado para a titlis-api. **Aditivo e desligado por padrão**
+  (`ENABLE_DISCOVERY=false`). Ele só descobre ("o que existe") — **nunca pontua** (coverage/trust é do
+  scoreops). Ver seção "Discovery Engine" abaixo.
 
 O operator **não calcula scores** — isso é responsabilidade do `titlis-scoreops`.
 O operator **não escreve CRDs `AppScorecard`** — a fase 5 da migração removeu isso.
@@ -254,6 +258,76 @@ Os CRDs são aplicados via `kubectl apply` durante o deploy:
 
 ---
 
+## Discovery Engine (Observability Intelligence Platform)
+
+Pacote `internal/discovery/` — generaliza a extração (antes só Deployment→snapshot) num **grafo de
+ativos multi-fonte** normalizado, base do coverage/trust downstream. **Desligado por padrão**
+(`ENABLE_DISCOVERY=false`); ligado, sobe como `DiscoveryRunner` (manager.Runnable, leader-elected,
+ticker `DISCOVERY_INTERVAL_SECONDS`, padrão 600s) ao lado dos controllers — **não toca o fluxo de
+scorecard existente**.
+
+### Estrutura
+
+```
+internal/discovery/
+├── asset.go            # Asset, Relation, AssetSubgraph, AssetGraphSnapshot, ProviderStatus, AssetSink
+├── provider.go         # Provider interface + Registry (merge + correlators)
+├── correlator.go       # Correlator + ServiceCorrelator (edges cross-provider)
+├── runner.go           # DiscoveryRunner (sweep periódico → SendAssetGraph)
+├── doc.go              # Contrato do Provider (convenções de ExternalID/Kind/Tags/Status)
+├── kubernetes/         # KubernetesProvider (nativo) + builder (edges + attributes)
+├── datadog/            # DatadogProvider + metrics.go (capacidades per-service)
+└── otel/               # stub OTel (prova o drop-in de novos providers)
+```
+
+### Contrato `Provider` (extensível — Datadog é a 1ª impl; Dynatrace/OTel são drop-in)
+
+```go
+type Provider interface {
+    Name() string                                  // "kubernetes" | "datadog" | "otel" | ...
+    Enabled() bool
+    Discover(ctx) (AssetSubgraph, error)           // erro NÃO é exceção: vai em Status
+}
+```
+Adicionar uma fonte = implementar `Provider` + registrar no `Registry` em `main.go`. **Nada** no
+`runner.go` nem no contrato HTTP muda. Conformidade verificada por `tests/unit/discovery` (`assertProviderContract`).
+
+### O que cada provider descobre
+
+- **KubernetesProvider** (via client direto/uncached — evita informers cluster-wide de Secrets/ConfigMaps):
+  Deployment/StatefulSet/DaemonSet/CronJob, Service, Ingress, HPA, PDB, NetworkPolicy, ConfigMap,
+  Secret (**só metadados**), Namespace. Edges: `selects`, `routes_to`, `scaled_by`, `protected_by`,
+  `uses_config`, `uses_secret`. Expõe a USTag `tags.datadoghq.com/service` como o attr `ddService` do workload.
+- **DatadogProvider** (creds per-tenant via `client.GetDatadogConfig()` — nunca env global): `dd_service`
+  (Service Catalog v2.2), `dd_monitor` (Monitors v1), `dd_slo` (SLOs v1), `metric` (gated por
+  `DISCOVERY_DD_INCLUDE_METRICS=false`). Edges: `dd_slo --based_on--> dd_monitor`,
+  `dd_monitor --monitors--> dd_service`, `dd_slo --targets--> dd_service` (via tag `service:`).
+  **Capacidades per-service** (`metrics.go`): consulta `ListActiveMetrics(tag service:X)`, classifica
+  (jvm/http/messaging/database/infra + `trace.*`→tracing) e anota `capabilities`+`metricCategories`
+  nos attributes do `dd_service`. Sem creds → `sync_status=not_configured`, zero assets, sem erro.
+- **ServiceCorrelator** (roda após o merge): edge `dd_service --describes--> workload` via USTag
+  (`ddService`) + fallback nome exato.
+
+### Envio
+
+`titlisapi.Client.SendAssetGraph(snap)` → `POST /v1/operator/discovery/assets` (X-Api-Key,
+fire-and-forget, timeout 2min). A titlis-api faz upsert idempotente e soft-delete por sweep.
+
+### Envs
+
+```bash
+ENABLE_DISCOVERY=false                 # aditivo, off por padrão
+DISCOVERY_INTERVAL_SECONDS=600
+DISCOVERY_PROVIDERS=kubernetes,datadog # providers ativos
+DISCOVERY_DD_INCLUDE_METRICS=false     # descoberta de métricas per-service (caro) — off
+DISCOVERY_OTEL_ENDPOINT=               # stub
+```
+
+> **Validado ao vivo (2026-06-21)**: o e2e simula o operator (POST direto no endpoint) e o fluxo
+> ingest → coverage → leitura passou contra o stack real. Ver `scripts/e2e-observability-intelligence.sh`.
+
+---
+
 ## 11. O Que Não Fazer
 
 - **Nunca** acesse a API do Kubernetes a partir do titlis-ai ou titlis-scoreops — o operator
@@ -262,3 +336,6 @@ Os CRDs são aplicados via `kubectl apply` durante o deploy:
 - **Nunca** abra PRs no GitHub — isso é responsabilidade exclusiva do titlis-ai
 - **Nunca** remova um Deployment do banco via HTTP DELETE — use eventos para soft-delete
 - **Nunca** bloqueie o goroutine do Reconcile com I/O síncrono para titlis-api — use `go`
+- **Nunca** pontue/classifique no Discovery Engine — ele só descobre; coverage/trust é do scoreops
+- **Nunca** logue/persista credenciais Datadog no provider — em memória por sweep, descarte ao fim
+- **Nunca** quebre o contrato `Provider`: fonte nova é drop-in (implementa + registra), sem mexer no runner

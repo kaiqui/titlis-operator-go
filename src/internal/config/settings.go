@@ -22,6 +22,17 @@ type Settings struct {
 	EnableQueueLinkScan           bool `envconfig:"ENABLE_QUEUE_LINK_SCAN" default:"false"`
 	QueueLinkScanIntervalSeconds  int  `envconfig:"QUEUE_LINK_SCAN_INTERVAL_SECONDS" default:"900"`
 
+	// Discovery Engine (Observability Intelligence Platform). Multi-fonte: K8s nativo + providers
+	// externos (Datadog na D2). Aditivo e desligado por padrão. DiscoveryProviders é informativo
+	// por enquanto — só "kubernetes" está implementado.
+	EnableDiscovery          bool   `envconfig:"ENABLE_DISCOVERY" default:"false"`
+	DiscoveryIntervalSeconds int    `envconfig:"DISCOVERY_INTERVAL_SECONDS" default:"600"`
+	DiscoveryProviders       string `envconfig:"DISCOVERY_PROVIDERS" default:"kubernetes,datadog"`
+	// Active-metric discovery no Datadog é caro (regra §10.6) — desligado por padrão.
+	DiscoveryDatadogMetrics  bool `envconfig:"DISCOVERY_DD_INCLUDE_METRICS" default:"false"`
+	// OTel discovery (scaffold): só ativa se "otel" estiver em DISCOVERY_PROVIDERS e houver endpoint.
+	DiscoveryOtelEndpoint    string `envconfig:"DISCOVERY_OTEL_ENDPOINT" default:""`
+
 	// Reconcile
 	ReconcileIntervalSeconds int `envconfig:"RECONCILE_INTERVAL_SECONDS" default:"300"`
 	DebounceSeconds          int `envconfig:"DEBOUNCE_SECONDS" default:"30"`
